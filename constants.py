@@ -39,11 +39,11 @@ scale8 = 3
     Columns: mnemonic, opcode, rmreg, ins1, ins2
 """
 instruction_table = []
-mnemonic = 0
-opcode = 1
-rmreg = 2
-ins1 = 3
-ins2 = 4
+c_mnemonic = 0
+c_opcode = 1
+c_rmreg = 2
+c_ins1 = 3
+c_ins2 = 4
 with open('instructions_csv.txt') as data_file:
    for line in data_file:
       instruction_table.append(line.strip().split(','))

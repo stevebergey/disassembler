@@ -24,10 +24,10 @@ cmp,39,r,r/m,reg
 cmp,3B,r,reg,r/m
 cmp,3C,NONE,EAX,imm8
 cmp,3D,NONE,EAX,imm32
-inc,40+rd,rd,rd,NONE
-jan,48+rd,rd,rd,NONE
-push,50+rd,rd,rd,NONE
-pop,58+rd,rd,rd,NONE
+inc,40,rd,rd,NONE
+dec,48,rd,rd,NONE
+push,50,rd,rd,NONE
+pop,58,rd,rd,NONE
 push,68,NONE,imm32,NONE
 push,6A,NONE,imm8,NONE
 add,81,0,r/m,imm32
@@ -51,7 +51,7 @@ nop,90,NONE,NONE,NONE
 movsd,A5,NONE,NONE,NONE
 test,A8,NONE,EAX,imm8
 test,A9,NONE,EAX,imm32
-mov,B8+rd,rd,rd,imm32
+mov,B8,rd,rd,imm32
 sal,C1,4,r/m,imm8
 sar,C1,7,r/m,imm8
 shr,C1,5,r/m,imm8
