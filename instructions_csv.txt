@@ -55,8 +55,10 @@ mov,B8,rd,rd,imm32
 sal,C1,4,r/m,imm8
 sar,C1,7,r/m,imm8
 shr,C1,5,r/m,imm8
+retn,C2,NONE,imm16,NONE
 retn,C3,NONE,NONE,NONE
 mov,C7,0,r/m,imm32
+retf,CA,NONE,imm16,NONE
 retf,CB,NONE,NONE,NONE
 sal,D1,4,r/m,1
 sar,D1,7,r/m,1
@@ -79,3 +81,5 @@ dec,FF,1,r/m,NONE
 inc,FF,0,r/m,NONE
 jmp,FF,4,r/m,NONE
 push,FF,6,r/m,NONE
+jz,74,c8,NONE,NONE
+jnz,75,c8,NONE,NONE

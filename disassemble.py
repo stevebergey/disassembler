@@ -25,6 +25,8 @@ def init_disassembly():
     """ Erases the disassembly.tmp file for writing
     """
     f = open("disassembly.tmp", 'w')
+    f.write("Address       Instruction   Disassembly\n")
+    f.write("-------------------------------------------\n")
     f.close()
 
     return
@@ -44,7 +46,9 @@ def add_to_disassembly(f, addr, length, disassembly):
 
     f.seek(addr)
     ins_bytes = f.read(length)
-    dis_line = str(addr) + " " + hexlify(ins_bytes) + " " + disassembly + "\n"
+    dis_line = "0x" + hex(addr)[2:].zfill(8) + "    " \
+               + hexlify(ins_bytes).ljust(10) + "    " \
+               + disassembly + "\n"
 
     f = open("disassembly.tmp", "a")
     f.write(dis_line)
@@ -197,14 +201,14 @@ def linear_sweep(file_obj, start_address):
 
                     # Handle odd-case addition-based op (mov reg, imm32)
                     if tmp_op == "B8":
+                        current_address += 4
                         imm32 = hexlify(f.read(4))
                         imm32 = endian_swap_32(imm32)
                         disas = disas + ", 0x" + imm32
 
-                    add_to_disassembly(f, ins_start_addr, 1, disas)
+                    add_to_disassembly(f, ins_start_addr,
+                                       current_address-ins_start_addr, disas)
 
-                if tmp_op == "B8":
-                    current_address += 4
                 in_instruction = False
                 sum_op_flag = False     # Reset flag
             # END ADDITION-BASED OPCODE
@@ -268,6 +272,12 @@ def linear_sweep(file_obj, start_address):
                     disas = disas + hexlify(f.read(1))
                     current_address += 1
                     add_to_disassembly(f, ins_start_addr, 2, disas)
+
+                elif ins[c_ins1] == "imm16":
+                    disas = instruction_table[row][c_mnemonic] + " "
+                    disas = disas + endian_swap_32(hexlify(f.read(2)))
+                    current_address += 2
+                    add_to_disassembly(f, ins_start_addr, 3, disas)
 
                 elif ins[c_ins1] == "imm32":
                     disas = instruction_table[row][c_mnemonic] + " "
