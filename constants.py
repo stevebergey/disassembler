@@ -16,21 +16,26 @@ ESI = 6
 EDI = 7
 
 """
-    MODR/M Modes
+    MODR/M
 """
-memAccess_D0 = 0
-memAccess_D1 = 1
-memAccces_D4 = 2
-regAccess = 3
+mem_access_D0 = 0
+mem_access_D1 = 1
+mem_access_D4 = 2
+reg_access = 3
+
+c_mod = 0
+c_reg = 1
+c_rm = 2
 
 
 """
-    SIB Scale Bits
+    SIB
 """
-scale1 = 0
-scale2 = 1
-scale4 = 2
-scale8 = 3
+c_scale = 0
+c_index = 1
+c_base = 2
+
+scales = ['1','2','4','8']
 
 
 """
@@ -47,3 +52,9 @@ c_ins2 = 4
 with open('instructions_csv.txt') as data_file:
    for line in data_file:
       instruction_table.append(line.strip().split(','))
+
+
+"""
+    Extended Opcode List
+"""
+extended_opcodes = ['81', '83', '8F', 'C1', 'D1', 'D3', 'F7', 'FF']
