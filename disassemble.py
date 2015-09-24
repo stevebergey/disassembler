@@ -7,6 +7,8 @@
 from binascii import hexlify
 from constants import *
 
+label_list = []     # Global list containing jmp/call addresses and their
+                    # Calculated offset location as (Addr, Loc)
 
 def endian_swap_32(hex32):
     """ Swaps the Endianness of a 32-bit value
@@ -25,15 +27,30 @@ def init_disassembly():
     """ Erases the disassembly.tmp file for writing
     """
     f = open("disassembly.tmp", 'w')
-    f.write("Address       Instruction   Disassembly\n")
-    f.write("-------------------------------------------\n")
+    f.write("Address       Instruction             Disassembly\n")
+    f.write("-----------------------------------------------------\n")
     f.close()
 
     return
 
 
+def add_label(ins_address, ins_length, offset):
+    """Calculate offset address for given jmp/call instruction and add to list
+
+    Args:
+        ins_address (address): Address of jmp/call instruction.
+        ins_length (int): Length of instruction in bytes.
+        offset (int): Offset location used by jmp/call
+    """
+
+    dest = ins_address + ins_length + int(offset, 16)
+    label_list.append([ins_address, dest])
+
+    return
+
+
 def add_to_disassembly(f, addr, length, disassembly):
-    """Adds line of disassembly to disassembly file.
+    """Adds line of disassembly to disassembly file. Also finds labels.
 
     Args:
         f (file): File being disassembled.
@@ -42,18 +59,54 @@ def add_to_disassembly(f, addr, length, disassembly):
         disassembly (string): String containing (mnemonic op1, op2)
     """
 
+    if any(ins in disassembly for ins in label_instructions):
+        offset = disassembly.split(' ')[-1] # Offset is last word in string
+        add_label(addr, length, offset)
+
     f_pos = f.tell()    # Save current file position
 
     f.seek(addr)
     ins_bytes = f.read(length)
     dis_line = "0x" + hex(addr)[2:].zfill(8) + "    " \
-               + hexlify(ins_bytes).ljust(10) + "    " \
+               + hexlify(ins_bytes).ljust(10) + "              " \
                + disassembly + "\n"
 
     f = open("disassembly.tmp", "a")
     f.write(dis_line)
 
     f.seek(f_pos)   # Restore file position
+
+    return
+
+def post_process_disassembly(dis_file):
+    """Performs various post process on the disassembly, such as adding labels.
+
+    Args:
+        dis_file (file): Disassembly file
+    """
+
+    f = open(dis_file, 'r')
+    header = f.readline() + f.readline()
+    dis = f.read()
+    f.close()
+
+    tmp = ""
+
+    f = open(dis_file, 'w')
+    f.write(header)
+
+    for line in iter(dis.splitlines(True)):
+        f.write(tmp)
+        tmp = line
+        addr = int(line.split(' ')[0][2:], 16)
+        for label in label_list:
+            if label[1] == addr:
+                f.write("\t\t\t\t\t\t\t0x" + hex(label[1])[2:].zfill(8) + ":\n")
+            if label[0] == addr:
+                tmp = line.rsplit(' ', 1)[0] +" 0x" \
+                      + hex(label[1])[2:].zfill(8) + "\n"
+
+    f.close()
 
     return
 
@@ -425,7 +478,6 @@ def linear_sweep(file_obj, start_address):
 
         # Check if more bytes available by peeking next byte
         byte = f.read(1)
-        byte = hexlify(byte) # DEBUG - REMOVE
         if byte:
             f.seek(f.tell()-1)
         # END BYTE WHILE LOOP
@@ -440,6 +492,7 @@ def main():
 
     f.close()
 
+    post_process_disassembly("disassembly.tmp")
     print("Finished!")
     exit()
 

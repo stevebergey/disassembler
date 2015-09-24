@@ -58,3 +58,8 @@ with open('instructions_csv.txt') as data_file:
     Extended Opcode List
 """
 extended_opcodes = ['81', '83', '8F', 'C1', 'D1', 'D3', 'F7', 'FF']
+
+"""
+    Instructions requiring labels
+"""
+label_instructions = ['jmp', 'jz', 'jnz', 'call']
