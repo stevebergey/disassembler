@@ -4,11 +4,33 @@
     Python disassembler for a limited x86 instruction set.
 """
 
+import argparse
+import os.path
 from binascii import hexlify
 from constants import *
+from math import pow
+from time import time
+
+
+start_time = None       # Used to detect possible infinite loops. If current
+infinite_threshold = 5  # time exceeds threshold, user will be prompted on
+                        # whether to continue execution or exit.
 
 label_list = []     # Global list containing jmp/call addresses and their
                     # Calculated offset location as (Addr, Loc)
+defer_queue = []    # List of addresses being deferred when using recursive
+                    # descent.
+instructions_written = [] # List of instructions already written to file.
+                          # Prevents duplicates from being written.
+
+def is_valid_file(parser, arg):
+    """ Check if file exists.
+    """
+    arg = os.path.abspath(arg)
+    if not os.path.exists(arg):
+        parser.error("The file " + arg + " does not exist!")
+    else:
+        return arg
 
 def endian_swap_32(hex32):
     """ Swaps the Endianness of a 32-bit value
@@ -23,10 +45,35 @@ def endian_swap_32(hex32):
     return hex32[6:8] + hex32[4:6] + hex32[2:4] + hex32[0:2]
 
 
+def htosi(val):
+    """ Converts hex string to signed integer
+
+    Args:
+        val (string): Hex string to convert
+
+    Returns:
+        uintval (int): signed integer representation.
+    """
+    uintval = int(val,16)
+    bits = 4 * len(val)
+    if uintval >= pow(2,bits-1):
+        uintval = int(0 - (pow(2,bits) - uintval))
+    return uintval
+
+
+def print_disassembly():
+    """Prints disassembly file to stdout.
+    """
+    f = open(dis_tmp, 'r')
+    print(f.read())
+    f.close()
+
+    return
+
 def init_disassembly():
     """ Erases the disassembly.tmp file for writing
     """
-    f = open("disassembly.tmp", 'w')
+    f = open(dis_tmp, 'w')
     f.write("Address       Instruction             Disassembly\n")
     f.write("-----------------------------------------------------\n")
     f.close()
@@ -42,9 +89,12 @@ def add_label(ins_address, ins_length, offset):
         ins_length (int): Length of instruction in bytes.
         offset (int): Offset location used by jmp/call
     """
-
     dest = ins_address + ins_length + int(offset, 16)
-    label_list.append([ins_address, dest])
+    label = [ins_address, dest]
+
+    # Prevent duplicates
+    if label not in label_list:
+        label_list.append(label)
 
     return
 
@@ -58,7 +108,21 @@ def add_to_disassembly(f, addr, length, disassembly):
         length (int): Number of bytes in instruction
         disassembly (string): String containing (mnemonic op1, op2)
     """
+    global start_time
 
+    if (time() - start_time) >= infinite_threshold:
+        answer = ""
+        while answer != "y" and answer != "n":
+            answer = raw_input("Process has been running for "
+                               + str(infinite_threshold) + " seconds. Would you"
+                               " like to continue (y/n)? ")
+        if answer == "y":
+            start_time = time()
+        else:
+            print("Exiting...")
+            exit()
+
+    # Check if instruction requires a label. If so, add it.
     if any(ins in disassembly for ins in label_instructions):
         offset = disassembly.split(' ')[-1] # Offset is last word in string
         add_label(addr, length, offset)
@@ -71,41 +135,55 @@ def add_to_disassembly(f, addr, length, disassembly):
                + hexlify(ins_bytes).ljust(10) + "              " \
                + disassembly + "\n"
 
-    f = open("disassembly.tmp", "a")
-    f.write(dis_line)
+
+    if dis_line not in instructions_written:
+        f2 = open(dis_tmp, "a")
+        f2.write(dis_line)
 
     f.seek(f_pos)   # Restore file position
 
     return
 
 def post_process_disassembly(dis_file):
-    """Performs various post process on the disassembly, such as adding labels.
+    """Performs various post process on the disassembly.
+
+    Sorts by address, in the case of recursive traversal - Then adds labels.
 
     Args:
         dis_file (file): Disassembly file
     """
+    last_label = "" # Used to prevent duplicate labels being placed when more
+                    # than one instruction branch to the same address.
 
     f = open(dis_file, 'r')
     header = f.readline() + f.readline()
-    dis = f.read()
+    dis = f.readlines()
     f.close()
 
+    # SORT / REMOVE DUPLICATES
+    dis = list(set(dis))
+    dis.sort(key=lambda a_line: a_line.split()[0])
+
+
+    # ADD LABELS
     tmp = ""
 
     f = open(dis_file, 'w')
     f.write(header)
 
-    for line in iter(dis.splitlines(True)):
+    for line in dis:
         f.write(tmp)
         tmp = line
         addr = int(line.split(' ')[0][2:], 16)
         for label in label_list:
-            if label[1] == addr:
-                f.write("\t\t\t\t\t\t\t0x" + hex(label[1])[2:].zfill(8) + ":\n")
+            if label[1] == addr and label[1] != last_label:
+                f.write("\t\t\t   0x" + hex(label[1])[2:].zfill(8) + ":\n")
+                last_label = label[1]
             if label[0] == addr:
                 tmp = line.rsplit(' ', 1)[0] +" 0x" \
                       + hex(label[1])[2:].zfill(8) + "\n"
 
+    f.write(tmp)
     f.close()
 
     return
@@ -174,20 +252,18 @@ def parse_sib_byte(sib_byte):
     return [scale, index, base]
 
 
-def linear_sweep(file_obj, start_address):
-    """ Perform a Linear Sweep Disassembly from the start_address.
+def disassemble(file_obj, start_address, recursive = False):
+    """ Perform a Full Disassembly from the start_address.
 
-    Takes a starting address and disassembles it using a Linear Sweep algorithm.
-    When an unconditional jump is encountered, disassembly stops and the jump
-    location is added to a queue. Disassembly also stops when a return or call
-    is encountered.
+    Takes a starting address and disassembles it using a Linear Sweep algorithm
+    by default, unless "Recursive" is specified - then it will perform a
+    Recursive Descent algorithm.
 
     Args:
         file (file): File to be disassembled.
-        start_address (int): The address to begin disassembly at
-
-    Returns:
-
+        start_address (int): The address to begin disassembly at.
+        recursive (Boolean): Indicated whether to use recursive or linear
+                             disassembly.
     """
     current_address = start_address
     ins_start_addr = start_address
@@ -199,8 +275,12 @@ def linear_sweep(file_obj, start_address):
 
     byte = 1
 
-    # loop over bytes
-    while byte:
+    # loop over bytes until no more and defer queue is empty
+    while byte or defer_queue:
+
+        # If no more bytes left, pop next address off queue
+        if recursive and not byte:
+            current_address = defer_queue.pop()
 
         # When not in the middle of parsing instruction...
         if not in_instruction:
@@ -211,6 +291,7 @@ def linear_sweep(file_obj, start_address):
             op1 = None
 
             # Read in byte
+            f.seek(current_address)
             current_address += 1
             byte = f.read(1)
             byte = hexlify(byte)
@@ -294,6 +375,12 @@ def linear_sweep(file_obj, start_address):
                     add_to_disassembly(f, ins_start_addr, 1, disas)
                     in_instruction = False
 
+                    # Set next byte to end of file if return so that next
+                    # address is taken from defer list.
+                    if recursive:
+                        if "ret" in instruction_table[row][c_mnemonic]:
+                            f.seek(0, 2)
+
         # When parsing instruction...
         elif in_instruction:
             ins = instruction_table[row]
@@ -317,6 +404,7 @@ def linear_sweep(file_obj, start_address):
                         disas = disas + imm32
                         current_address += 4
                         add_to_disassembly(f, ins_start_addr, 5, disas)
+
                     else:
                         print("Error: Unsupported immediate at instruction " +
                               ins_start_addr)
@@ -331,6 +419,12 @@ def linear_sweep(file_obj, start_address):
                     disas = disas + endian_swap_32(hexlify(f.read(2)))
                     current_address += 2
                     add_to_disassembly(f, ins_start_addr, 3, disas)
+
+                    # Set next byte to end of file if return so that next
+                    # address is taken from defer list.
+                    if recursive:
+                        if "ret" in instruction_table[row][c_mnemonic]:
+                            f.seek(0, 2)
 
                 elif ins[c_ins1] == "imm32":
                     disas = instruction_table[row][c_mnemonic] + " "
@@ -351,6 +445,19 @@ def linear_sweep(file_obj, start_address):
                 disas = disas + imm32
                 current_address += 4
                 add_to_disassembly(f, ins_start_addr, 5, disas)
+
+                # Handle instructions for recursive mode.
+                if recursive:
+                    if instruction_table[row][c_mnemonic] == "call":
+                        defer_queue.append(current_address)
+                        current_address += htosi(imm32)
+                    if instruction_table[row][c_mnemonic] == "jmp":
+                        current_address += htosi(imm32)
+                    if instruction_table[row][c_mnemonic] == "jnz":
+                        defer_queue.append(current_address + htosi(imm32))
+                    if instruction_table[row][c_mnemonic] == "jz":
+                        defer_queue.append(current_address + htosi(imm32))
+
                 in_instruction = False
 
             # RM/REG is c8
@@ -363,6 +470,16 @@ def linear_sweep(file_obj, start_address):
                     add_to_disassembly(f, ins_start_addr, 3, disas)
                 else:
                     add_to_disassembly(f, ins_start_addr, 2, disas)
+
+                # Handle instructions for recursive mode.
+                if recursive:
+                    if instruction_table[row][c_mnemonic] == "jmp":
+                        current_address += htosi(imm8)
+                    if instruction_table[row][c_mnemonic] == "jnz":
+                        defer_queue.append(current_address + htosi(imm8))
+                    if instruction_table[row][c_mnemonic] == "jz":
+                        defer_queue.append(current_address + htosi(imm8))
+
                 in_instruction = False
 
             # RM/REG is r or 0 through 7
@@ -480,19 +597,42 @@ def linear_sweep(file_obj, start_address):
         byte = f.read(1)
         if byte:
             f.seek(f.tell()-1)
-        # END BYTE WHILE LOOP
 
 
 def main():
-    # @TODO Get file from command line
+
+    # Parse Args
+    parser = argparse.ArgumentParser(description='Disassemble an x86 binary. '
+                                    'Defaults to Linear Sweep, unless -r flag is'
+                                    ' set for recursive descent.')
+    parser.add_argument(dest="filename",
+                        type=lambda x: is_valid_file(parser, x),
+                        help="Binary file to disassemble.", metavar="FILE")
+    parser.add_argument('-r', action='store_true',
+                        help="Use recursive descent instead of linear sweep.")
+    args = parser.parse_args()
+
+    # Get start time for infinite loop testing
+    global start_time
+    start_time = time()
+
+    # Initialize output file
     init_disassembly()
 
-    f = open('ex2', 'rw')
-    linear_sweep(f, 0)
+    # Open given file
+    bin_file = open(args.filename, 'rw')
 
-    f.close()
+    # Disassemble given gile
+    disassemble(bin_file, 0, args.r)
 
-    post_process_disassembly("disassembly.tmp")
+    # Close bin file
+    bin_file.close()
+
+    # Cleanup diasassembly
+    post_process_disassembly(dis_tmp)
+
+    print_disassembly()
+
     print("Finished!")
     exit()
 

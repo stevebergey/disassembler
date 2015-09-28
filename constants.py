@@ -3,6 +3,12 @@
 """
 
 """
+    Files
+"""
+# Used for storing the final disassembly
+dis_tmp = "disassembly.tmp"
+
+"""
     Registers
 """
 registers = ['EAX', 'ECX', 'EDX', 'EBX', 'ESP', 'EBP', 'ESI', 'EDI']
