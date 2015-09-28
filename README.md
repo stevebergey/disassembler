@@ -8,17 +8,8 @@ If an unknown opcode is encountered, it will be treated as data and disassembly 
 
 ### Supported Instructions
 The following instructions are supported, inclduing RM/REG and SIB bytes. 
-|  |  |  |
-|------|-------|--------------|
-| not  | call  | or           |
-| cmp  | pop   | dec          |
-| push | idiv  | repne  cmpsd |
-| imul | retf  | retn         |
-| inc  | jmp   | sal          |
-| jz   | jnz   | sar          |
-| lea  | sbb   | mov          |
-| shr  | movsd | test         |
-| mul  | xor   | neg          |
+
+not, call, or, cmp, pop, dec, push, idiv, repne  cmpsd, imu, ret, ret, inc, jmp, sal, jz, jnz, sar, lea, sbb, mov, shr, movsd, test, mul, xor, neg          
 
 ### Example
 
